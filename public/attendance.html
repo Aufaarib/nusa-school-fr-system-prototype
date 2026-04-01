@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Face Recognition System – Attendance</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/"><span class="icon">👁️</span>FaceID System</a>
+  <div class="navbar-links">
+    <a href="/">📊 <span>Dashboard</span></a>
+    <a href="/register.html">➕ <span>Register</span></a>
+    <a href="/recognize.html">🎥 <span>Recognize</span></a>
+    <a href="/attendance.html" class="active">📋 <span>Attendance</span></a>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header flex-between" style="flex-wrap:wrap;gap:12px">
+    <div>
+      <h1>Attendance Records</h1>
+      <p>View, filter, and export face recognition logs</p>
+    </div>
+    <div class="flex-center" style="gap:8px;flex-wrap:wrap">
+      <button class="btn btn-success" onclick="exportCSV()">📥 Export CSV</button>
+      <button class="btn btn-danger btn-sm" onclick="clearToday()">🗑 Clear Today</button>
+    </div>
+  </div>
+
+  <!-- Today's Summary -->
+  <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="stat-card green">
+      <div class="label">✅ Present Today</div>
+      <div class="value" id="todayPresent">—</div>
+    </div>
+    <div class="stat-card red">
+      <div class="label">❌ Absent Today</div>
+      <div class="value" id="todayAbsent">—</div>
+    </div>
+    <div class="stat-card blue">
+      <div class="label">📁 Total Records</div>
+      <div class="value" id="totalRecords">—</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card" style="padding:16px;margin-bottom:24px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div class="form-group" style="margin:0;flex:1;min-width:150px">
+        <label>Date</label>
+        <input type="date" id="filterDate" onchange="loadRecords()"/>
+      </div>
+      <div class="form-group" style="margin:0;flex:2;min-width:200px">
+        <label>Search by Name or ID</label>
+        <input type="text" id="filterSearch" placeholder="Type to search..." oninput="loadRecords()"/>
+      </div>
+      <button class="btn btn-ghost" onclick="clearFilters()">↺ Reset</button>
+    </div>
+  </div>
+
+  <!-- Present vs Absent Tabs -->
+  <div style="display:flex;gap:0;margin-bottom:-1px">
+    <button class="tab-btn active" id="tabPresent" onclick="showTab('present')">
+      ✅ Present
+    </button>
+    <button class="tab-btn" id="tabAbsent" onclick="showTab('absent')">
+      ❌ Absent
+    </button>
+  </div>
+
+  <!-- Present Table -->
+  <div id="panelPresent">
+    <div class="table-wrapper">
+      <table id="attendanceTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Person ID</th>
+            <th>Role</th>
+            <th>Department</th>
+            <th>Time</th>
+            <th>Date</th>
+            <th>Confidence</th>
+          </tr>
+        </thead>
+        <tbody id="attendanceBody">
+          <tr>
+            <td colspan="8" class="empty-state" style="padding:40px">
+              <span class="icon">📋</span>
+              <p>No records found. Start the recognition camera to log attendance.</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Absent Table -->
+  <div id="panelAbsent" style="display:none">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Person ID</th>
+            <th>Role</th>
+            <th>Department</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="absentBody">
+          <tr>
+            <td colspan="6" class="empty-state" style="padding:40px">
+              <span class="icon">✅</span>
+              <p>Everyone is present today!</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<style>
+.tab-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  color: var(--text-muted);
+  padding: 8px 20px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px 6px 0 0;
+  transition: all 0.15s;
+}
+.tab-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+</style>
+
+<script>
+let allRecords = [];
+let absentList = [];
+
+// Set today's date as default filter
+window.addEventListener('DOMContentLoaded', () => {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('filterDate').value = today;
+  loadRecords();
+  loadStats();
+});
+
+async function loadStats() {
+  try {
+    const res  = await fetch('/api/stats');
+    const data = await res.json();
+    if (!data.success) return;
+    document.getElementById('todayPresent').textContent = data.data.todayPresent;
+    document.getElementById('todayAbsent').textContent  = data.data.todayAbsent;
+    document.getElementById('totalRecords').textContent = data.data.totalLogs;
+  } catch (e) {}
+}
+
+async function loadRecords() {
+  const dateInput   = document.getElementById('filterDate').value;
+  const searchInput = document.getElementById('filterSearch').value.trim();
+
+  // Convert YYYY-MM-DD to MM/DD/YYYY for the API
+  let dateParam = '';
+  if (dateInput) {
+    const [y, m, d] = dateInput.split('-');
+    dateParam = `${parseInt(m)}/${parseInt(d)}/${y}`;
+  }
+
+  let url = '/api/attendance?';
+  if (dateParam)   url += `date=${encodeURIComponent(dateParam)}&`;
+  if (searchInput) url += `search=${encodeURIComponent(searchInput)}&`;
+
+  try {
+    const res  = await fetch(url);
+    const data = await res.json();
+    allRecords = data.success ? data.data : [];
+    renderPresent(allRecords);
+
+    // Also load absent list
+    if (dateParam) {
+      const absRes  = await fetch('/api/attendance/absent');
+      const absData = await absRes.json();
+      absentList = absData.success ? absData.data : [];
+      renderAbsent(absentList);
+    }
+  } catch (e) {
+    showToast('error', 'Error', 'Could not load records');
+  }
+}
+
+function renderPresent(records) {
+  const tbody = document.getElementById('attendanceBody');
+  if (!records.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="padding:40px">
+      <span class="icon">📋</span><p>No records found for this filter.</p></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = records.map((r, i) => `
+    <tr>
+      <td style="color:var(--text-muted)">${i + 1}</td>
+      <td><strong>${r.personName}</strong></td>
+      <td><code style="font-size:0.82rem;color:var(--accent)">${r.personId}</code></td>
+      <td>${r.role || '—'}</td>
+      <td>${r.department || '—'}</td>
+      <td style="font-family:monospace;color:var(--green)">${r.time}</td>
+      <td style="color:var(--text-muted)">${r.date}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="background:var(--surface2);border-radius:3px;height:6px;width:60px;overflow:hidden">
+            <div style="height:100%;width:${r.confidence||0}%;background:var(--green)"></div>
+          </div>
+          <span style="font-size:0.78rem">${r.confidence ? r.confidence + '%' : '—'}</span>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderAbsent(absent) {
+  const tbody = document.getElementById('absentBody');
+  if (!absent.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state" style="padding:40px">
+      <span class="icon">✅</span><p>Everyone is present today!</p></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = absent.map((f, i) => `
+    <tr>
+      <td style="color:var(--text-muted)">${i + 1}</td>
+      <td><strong>${f.name}</strong></td>
+      <td><code style="font-size:0.82rem;color:var(--accent)">${f.personId}</code></td>
+      <td>${f.role || '—'}</td>
+      <td>${f.department || '—'}</td>
+      <td><span class="badge badge-red">Absent</span></td>
+    </tr>
+  `).join('');
+}
+
+function showTab(tab) {
+  document.getElementById('panelPresent').style.display = tab === 'present' ? '' : 'none';
+  document.getElementById('panelAbsent').style.display  = tab === 'absent'  ? '' : 'none';
+  document.getElementById('tabPresent').classList.toggle('active', tab === 'present');
+  document.getElementById('tabAbsent').classList.toggle('active', tab === 'absent');
+}
+
+function clearFilters() {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('filterDate').value   = today;
+  document.getElementById('filterSearch').value = '';
+  loadRecords();
+}
+
+async function clearToday() {
+  const today = new Date().toLocaleDateString('en-US');
+  if (!confirm(`Clear all attendance records for today (${today})?`)) return;
+  try {
+    await fetch(`/api/attendance?date=${encodeURIComponent(today)}`, { method: 'DELETE' });
+    showToast('success', 'Cleared', "Today's attendance records removed");
+    loadRecords();
+    loadStats();
+  } catch (e) {
+    showToast('error', 'Error', 'Could not clear records');
+  }
+}
+
+function exportCSV() {
+  if (!allRecords.length) return showToast('warning', 'No data', 'No records to export');
+
+  const headers = ['#', 'Name', 'Person ID', 'Role', 'Department', 'Time', 'Date', 'Confidence'];
+  const rows    = allRecords.map((r, i) => [
+    i + 1, r.personName, r.personId, r.role || '', r.department || '',
+    r.time, r.date, (r.confidence || 0) + '%'
+  ]);
+
+  const csv = [headers, ...rows]
+    .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `attendance_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('success', 'Exported', 'CSV file downloaded');
+}
+
+function showToast(type, title, msg) {
+  const icons = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️' };
+  const el    = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `
+    <div class="toast-icon">${icons[type]||'ℹ️'}</div>
+    <div><div class="toast-title">${title}</div><div class="toast-msg">${msg}</div></div>
+  `;
+  el.onclick = () => el.remove();
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+</script>
+</body>
+</html>

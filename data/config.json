@@ -1,0 +1,6 @@
+{
+  "systemName": "Face Recognition System",
+  "notifyOnRecognize": false,
+  "notifyOnUnknown": true,
+  "matchThreshold": 0.5
+}

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Face Recognition System – Dashboard</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="navbar">
+  <a class="navbar-brand" href="/">
+    <span class="icon">👁️</span>
+    FaceID System
+  </a>
+  <div class="navbar-links">
+    <a href="/" class="active">📊 <span>Dashboard</span></a>
+    <a href="/register.html">➕ <span>Register</span></a>
+    <a href="/recognize.html">🎥 <span>Recognize</span></a>
+    <a href="/attendance.html">📋 <span>Attendance</span></a>
+  </div>
+  <div class="navbar-status">
+    <div class="status-dot" id="systemDot"></div>
+    <span id="systemStatus">Loading...</span>
+  </div>
+</nav>
+
+<!-- Main -->
+<div class="container">
+  <div class="page-header">
+    <h1>System Dashboard</h1>
+    <p>Overview of face recognition activity and registered persons</p>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card blue">
+      <div class="label">👤 Total Registered</div>
+      <div class="value" id="statTotal">—</div>
+    </div>
+    <div class="stat-card green">
+      <div class="label">✅ Present Today</div>
+      <div class="value" id="statPresent">—</div>
+    </div>
+    <div class="stat-card red">
+      <div class="label">❌ Absent Today</div>
+      <div class="value" id="statAbsent">—</div>
+    </div>
+    <div class="stat-card yellow">
+      <div class="label">📁 Total Log Records</div>
+      <div class="value" id="statLogs">—</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- Registered Persons -->
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:16px">
+        <div class="card-title">👥 Registered Persons</div>
+        <a href="/register.html" class="btn btn-primary btn-sm">+ Add Person</a>
+      </div>
+      <div id="faceList" class="face-list">
+        <div class="empty-state">
+          <span class="icon">🚀</span>
+          <p>No persons registered yet.<br>Go to Register to add your first person.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Today's Attendance -->
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:16px">
+        <div class="card-title">📋 Today's Activity</div>
+        <a href="/attendance.html" class="btn btn-ghost btn-sm">View All</a>
+      </div>
+      <div id="todayList">
+        <div class="empty-state">
+          <span class="icon">📡</span>
+          <p>No recognitions yet today.<br>Start the camera to begin detection.</p>
+        </div>
+      </div>
+      <hr class="divider">
+      <div class="flex-between">
+        <div>
+          <a href="/recognize.html" class="btn btn-success">🎥 Start Recognition</a>
+        </div>
+        <div style="font-size:0.8rem;color:var(--text-muted)" id="lastUpdated">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Guide -->
+  <div class="card mt-24">
+    <div class="card-title">🚀 Quick Start Guide</div>
+    <div class="grid-3" style="margin-top:8px">
+      <div style="padding:16px;background:var(--surface2);border-radius:6px;text-align:center">
+        <div style="font-size:2rem;margin-bottom:8px">1️⃣</div>
+        <div style="font-weight:600;margin-bottom:4px">Download Models</div>
+        <div style="font-size:0.82rem;color:var(--text-muted)">Run <code>node download-models.js</code> once to get AI model files</div>
+      </div>
+      <div style="padding:16px;background:var(--surface2);border-radius:6px;text-align:center">
+        <div style="font-size:2rem;margin-bottom:8px">2️⃣</div>
+        <div style="font-weight:600;margin-bottom:4px">Register Faces</div>
+        <div style="font-size:0.82rem;color:var(--text-muted)">Go to Register page, enter name/ID and capture face via camera</div>
+      </div>
+      <div style="padding:16px;background:var(--surface2);border-radius:6px;text-align:center">
+        <div style="font-size:2rem;margin-bottom:8px">3️⃣</div>
+        <div style="font-weight:600;margin-bottom:4px">Start Detection</div>
+        <div style="font-size:0.82rem;color:var(--text-muted)">Open Recognize page — system will detect and identify faces in real-time</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+  async function loadStats() {
+    try {
+      const res  = await fetch('/api/stats');
+      const data = await res.json();
+      if (!data.success) return;
+      document.getElementById('statTotal').textContent   = data.data.totalRegistered;
+      document.getElementById('statPresent').textContent = data.data.todayPresent;
+      document.getElementById('statAbsent').textContent  = data.data.todayAbsent;
+      document.getElementById('statLogs').textContent    = data.data.totalLogs;
+
+      // Status
+      const dot    = document.getElementById('systemDot');
+      const status = document.getElementById('systemStatus');
+      dot.classList.add('live');
+      status.textContent = `${data.data.totalRegistered} persons registered`;
+    } catch (e) {
+      document.getElementById('systemStatus').textContent = 'Server offline';
+    }
+  }
+
+  async function loadFaces() {
+    try {
+      const res  = await fetch('/api/faces');
+      const data = await res.json();
+      if (!data.success || !data.data.length) return;
+
+      const container = document.getElementById('faceList');
+      container.innerHTML = data.data.map(f => `
+        <div class="face-card">
+          ${f.thumbnail
+            ? `<img src="${f.thumbnail}" alt="${f.name}">`
+            : `<div class="face-placeholder">👤</div>`}
+          <div class="face-name">${f.name}</div>
+          <div class="face-role">${f.role || 'person'}</div>
+          <div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px">${f.personId}</div>
+          <button class="delete-btn" onclick="deleteFace('${f.personId}','${f.name}')">✕</button>
+        </div>
+      `).join('');
+    } catch (e) { }
+  }
+
+  async function loadTodayAttendance() {
+    try {
+      const today = new Date().toLocaleDateString('en-US');
+      const res   = await fetch(`/api/attendance?date=${encodeURIComponent(today)}`);
+      const data  = await res.json();
+      if (!data.success || !data.data.length) return;
+
+      const list = document.getElementById('todayList');
+      list.innerHTML = data.data.slice(0, 8).map(r => `
+        <div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <div>
+            <div style="font-size:0.9rem;font-weight:600">${r.personName}</div>
+            <div style="font-size:0.75rem;color:var(--text-muted)">${r.role} • ${r.personId}</div>
+          </div>
+          <div style="text-align:right">
+            <span class="badge badge-green">Present</span>
+            <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px">${r.time}</div>
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('lastUpdated').textContent =
+        'Updated ' + new Date().toLocaleTimeString();
+    } catch (e) { }
+  }
+
+  async function deleteFace(personId, name) {
+    if (!confirm(`Remove ${name} from the system?`)) return;
+    try {
+      const res = await fetch(`/api/faces/${encodeURIComponent(personId)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        showToast('success', 'Removed', `${name} has been removed`);
+        loadStats();
+        loadFaces();
+      }
+    } catch (e) {
+      showToast('error', 'Error', 'Could not remove person');
+    }
+  }
+
+  function showToast(type, title, msg) {
+    const icons = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️' };
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.innerHTML = `
+      <div class="toast-icon">${icons[type] || 'ℹ️'}</div>
+      <div><div class="toast-title">${title}</div><div class="toast-msg">${msg}</div></div>
+    `;
+    el.onclick = () => el.remove();
+    document.getElementById('toastContainer').appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+
+  // Initial load
+  loadStats();
+  loadFaces();
+  loadTodayAttendance();
+  // Auto-refresh every 30s
+  setInterval(() => { loadStats(); loadTodayAttendance(); }, 30000);
+</script>
+</body>
+</html>

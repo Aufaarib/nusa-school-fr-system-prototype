@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Face Recognition System – Register</title>
+  <link rel="stylesheet" href="/css/style.css"/>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="/"><span class="icon">👁️</span>FaceID System</a>
+  <div class="navbar-links">
+    <a href="/">📊 <span>Dashboard</span></a>
+    <a href="/register.html" class="active">➕ <span>Register</span></a>
+    <a href="/recognize.html">🎥 <span>Recognize</span></a>
+    <a href="/attendance.html">📋 <span>Attendance</span></a>
+  </div>
+  <div class="navbar-status">
+    <div class="status-dot" id="modelDot"></div>
+    <span id="modelStatus">Loading AI models...</span>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <h1>Register New Person</h1>
+    <p>Fill in details and capture face from the live camera. Register each person once.</p>
+  </div>
+
+  <div class="grid-2">
+    <!-- Camera Section -->
+    <div>
+      <div class="card" style="padding:16px">
+        <div class="card-title">📷 Live Camera</div>
+        <div class="camera-container" id="cameraContainer">
+          <video id="video" autoplay muted playsinline></video>
+          <canvas id="overlay" class="overlay"></canvas>
+          <div class="camera-label" id="cameraLabel">CAMERA OFF</div>
+          <div id="loadingOverlay" class="loading-overlay">
+            <div class="spinner"></div>
+            <div style="color:var(--text-muted);font-size:0.85rem">Loading AI Models...</div>
+          </div>
+        </div>
+
+        <!-- Capture Progress -->
+        <div style="margin-top:16px">
+          <div class="flex-between" style="margin-bottom:6px">
+            <span style="font-size:0.85rem;color:var(--text-muted)">Capture Progress</span>
+            <span style="font-size:0.85rem" id="captureCount">0 / 10 samples</span>
+          </div>
+          <div class="progress"><div class="progress-bar" id="captureBar" style="width:0%"></div></div>
+          <div style="font-size:0.78rem;color:var(--text-muted);margin-top:6px" id="captureHint">
+            Start the camera and click "Capture Face" to begin
+          </div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="flex-center mt-16" style="flex-wrap:wrap;gap:8px">
+          <button class="btn btn-primary" id="btnCamera" onclick="startCamera()">📷 Start Camera</button>
+          <button class="btn btn-success" id="btnCapture" onclick="captureSample()" disabled>
+            ⊕ Capture Face
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="resetCapture()">↺ Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Form Section -->
+    <div>
+      <div class="card">
+        <div class="card-title">👤 Person Details</div>
+
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input type="text" id="name" placeholder="e.g. John Smith" autocomplete="off"/>
+        </div>
+        <div class="form-group">
+          <label>Person ID / Student ID *</label>
+          <input type="text" id="personId" placeholder="e.g. STU-2024-001" autocomplete="off"/>
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select id="role">
+            <option value="student">Student</option>
+            <option value="staff">Staff / Teacher</option>
+            <option value="visitor">Visitor</option>
+            <option value="security">Security</option>
+            <option value="person">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Department / Class</label>
+          <input type="text" id="department" placeholder="e.g. Class 10A / Engineering"/>
+        </div>
+
+        <hr class="divider"/>
+
+        <!-- Thumbnail preview -->
+        <div id="thumbPreview" style="display:none;margin-bottom:16px;text-align:center">
+          <img id="thumbImg" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:2px solid var(--green)"/>
+          <div style="font-size:0.78rem;color:var(--green);margin-top:6px">✅ Face captured</div>
+        </div>
+
+        <button class="btn btn-success btn-lg" id="btnRegister" onclick="registerPerson()" style="width:100%" disabled>
+          ✅ Register Person
+        </button>
+
+        <div id="registerMsg" style="margin-top:12px;font-size:0.85rem;display:none"></div>
+      </div>
+
+      <!-- Registered list (mini) -->
+      <div class="card mt-16">
+        <div class="flex-between" style="margin-bottom:12px">
+          <div class="card-title">📋 Registered (<span id="regCount">0</span>)</div>
+          <button class="btn btn-danger btn-sm" onclick="clearAll()" id="btnClearAll" style="display:none">Clear All</button>
+        </div>
+        <div id="miniList">
+          <div class="empty-state" style="padding:24px">
+            <span class="icon">👥</span>
+            <p>No persons registered</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- face-api.js from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script src="/js/register.js"></script>
+</body>
+</html>
