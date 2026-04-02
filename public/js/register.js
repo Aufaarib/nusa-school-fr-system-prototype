@@ -4,6 +4,8 @@
  */
 
 const MODEL_URL      = '/models';
+const BASE_URL       = 'https://api-staging-nusa.nuncorp.id/api/v1/';
+const STORAGE_URL    = 'https://api-staging-nusa.nuncorp.id/be2';
 const SAMPLE_TARGET  = 10;     // How many frames to average for stability
 
 let videoEl, overlayEl, overlayCtx;
@@ -12,6 +14,7 @@ let capturedSamples = [];     // Array of Float32Array descriptors
 let isCapturing     = false;
 let modelsLoaded    = false;
 let detectionLoop   = null;
+let students        = [];     // Fetched student list
 
 // ─── Init on Page Load ────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
@@ -20,8 +23,30 @@ window.addEventListener('DOMContentLoaded', async () => {
   overlayCtx = overlayEl.getContext('2d');
 
   await loadModels();
+  await loadStudents();
   await refreshRegisteredList();
 });
+
+// ─── Load Students from API ──────────────────────────────────────────────────
+async function loadStudents() {
+  const select = document.getElementById('studentSelect');
+  try {
+    const res  = await fetch(`${BASE_URL}kbm/student?page=100000`);
+    const data = await res.json();
+    students = data.data || [];
+
+    if (!students.length) {
+      select.innerHTML = '<option value="">No students found</option>';
+      return;
+    }
+
+    select.innerHTML = '<option value="">-- Select a student --</option>' +
+      students.map(s => `<option value="${s.id}">${s.name} (${s.id})</option>`).join('');
+  } catch (e) {
+    select.innerHTML = '<option value="">Failed to load students</option>';
+    showToast('error', 'Load error', 'Could not fetch student list');
+  }
+}
 
 // ─── Load AI Models ───────────────────────────────────────────────────────────
 async function loadModels() {
@@ -148,12 +173,6 @@ async function captureSample() {
     return showToast('info', 'Already captured', 'Click "Register Person" to save');
   }
 
-  const name     = document.getElementById('name').value.trim();
-  const personId = document.getElementById('personId').value.trim();
-  if (!name || !personId) {
-    return showToast('warning', 'Missing info', 'Please enter Name and Person ID first');
-  }
-
   isCapturing = true;
   const btn   = document.getElementById('btnCapture');
   btn.disabled = true;
@@ -225,12 +244,11 @@ function averageDescriptors(samples) {
 
 // ─── Register Person ──────────────────────────────────────────────────────────
 async function registerPerson() {
-  const name       = document.getElementById('name').value.trim();
-  const personId   = document.getElementById('personId').value.trim();
-  const role       = document.getElementById('role').value;
-  const department = document.getElementById('department').value.trim();
+  const select   = document.getElementById('studentSelect');
+  const personId = select.value;
+  const student  = students.find(s => s.id === personId);
+  const name     = student ? student.name : personId;
 
-  if (!name || !personId) return showToast('warning', 'Required', 'Name and ID are required');
   if (capturedSamples.length < SAMPLE_TARGET) {
     return showToast('warning', 'Incomplete', 'Please capture enough face samples first');
   }
@@ -242,29 +260,22 @@ async function registerPerson() {
   try {
     const descriptor = averageDescriptors(capturedSamples);
     const body = {
-      name, personId, role, department,
-      descriptor,
-      thumbnail: window._thumbnail || null
+      studentId: personId || '6fa3b04f-2910-4566-bc2b-9dce482b0b3b',
+      imageThumbnail: window._thumbnail || null,
+      descriptor
     };
 
-    const res  = await fetch('/api/faces/register', {
+    const res  = await fetch('https://api-staging-nusa.nuncorp.id/be2/api/v1/face-recognition/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
     const data = await res.json();
 
-    if (data.success) {
-      showToast('success', data.updated ? 'Updated' : 'Registered!',
-        `${name} has been ${data.updated ? 'updated' : 'registered'} successfully`);
-      resetCapture();
-      document.getElementById('name').value       = '';
-      document.getElementById('personId').value   = '';
-      document.getElementById('department').value = '';
-      await refreshRegisteredList();
-    } else {
-      showToast('error', 'Failed', data.message);
-    }
+    showToast('success', 'Registered!', `Student has been registered successfully`);
+    resetCapture();
+    select.value = '';
+    await refreshRegisteredList();
   } catch (err) {
     showToast('error', 'Error', err.message);
   } finally {
@@ -289,9 +300,9 @@ function resetCapture() {
 // ─── Refresh Registered List ──────────────────────────────────────────────────
 async function refreshRegisteredList() {
   try {
-    const res  = await fetch('/api/faces');
+    const res  = await fetch('https://api-staging-nusa.nuncorp.id/be2/api/v1/face-recognition/faces');
     const data = await res.json();
-    const list = data.success ? data.data : [];
+    const list = data.data || [];
 
     document.getElementById('regCount').textContent = list.length;
     document.getElementById('btnClearAll').style.display = list.length ? 'inline-flex' : 'none';
@@ -305,15 +316,13 @@ async function refreshRegisteredList() {
     container.innerHTML = list.map(f => `
       <div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--border)">
         <div class="flex-center">
-          ${f.thumbnail
-            ? `<img src="${f.thumbnail}" style="width:32px;height:32px;border-radius:50%;object-fit:cover">`
+          ${f.imagePath
+            ? `<img src="${STORAGE_URL}${f.imagePath}" style="width:32px;height:32px;border-radius:50%;object-fit:cover">`
             : `<div style="width:32px;height:32px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center">👤</div>`}
           <div>
-            <div style="font-size:0.85rem;font-weight:600">${f.name}</div>
-            <div style="font-size:0.72rem;color:var(--text-muted)">${f.personId} • ${f.role}</div>
+            <div style="font-size:0.85rem;font-weight:600">${f.name || f.userId}</div>
           </div>
         </div>
-        <button class="btn btn-danger btn-sm" onclick="deletePerson('${f.personId}','${f.name}')">✕</button>
       </div>
     `).join('');
   } catch (e) { }
@@ -331,13 +340,8 @@ async function deletePerson(personId, name) {
 
 async function clearAll() {
   if (!confirm('Remove ALL registered persons? This cannot be undone.')) return;
-  const res  = await fetch('/api/faces');
-  const data = await res.json();
-  for (const f of data.data) {
-    await fetch(`/api/faces/${encodeURIComponent(f.personId)}`, { method: 'DELETE' });
-  }
-  showToast('success', 'Cleared', 'All persons removed');
-  refreshRegisteredList();
+  // TODO: implement delete via external API when endpoint is available
+  showToast('warning', 'Not supported', 'Clear all is not available with the external API');
 }
 
 // ─── Toast Helper ─────────────────────────────────────────────────────────────

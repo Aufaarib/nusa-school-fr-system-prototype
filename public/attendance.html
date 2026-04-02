@@ -79,19 +79,19 @@
           <tr>
             <th>#</th>
             <th>Name</th>
-            <th>Person ID</th>
-            <th>Role</th>
-            <th>Department</th>
+            <th>NIS</th>
+            <th>Grade</th>
             <th>Time</th>
             <th>Date</th>
-            <th>Confidence</th>
+            <th>Status</th>
+            <th>Evidence</th>
           </tr>
         </thead>
         <tbody id="attendanceBody">
           <tr>
             <td colspan="8" class="empty-state" style="padding:40px">
               <span class="icon">📋</span>
-              <p>No records found. Start the recognition camera to log attendance.</p>
+              <p>No attendance records yet for this date.</p>
             </td>
           </tr>
         </tbody>
@@ -107,9 +107,8 @@
           <tr>
             <th>#</th>
             <th>Name</th>
-            <th>Person ID</th>
-            <th>Role</th>
-            <th>Department</th>
+            <th>NIS</th>
+            <th>Grade</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -149,56 +148,47 @@
 </style>
 
 <script>
+const STORAGE_URL = 'https://api-staging-nusa.nuncorp.id/be2';
+const LOGS_URL    = 'https://api-staging-nusa.nuncorp.id/be2/api/v1/face-recognition/logs';
+
 let allRecords = [];
-let absentList = [];
 
 // Set today's date as default filter
 window.addEventListener('DOMContentLoaded', () => {
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('filterDate').value = today;
   loadRecords();
-  loadStats();
 });
-
-async function loadStats() {
-  try {
-    const res  = await fetch('/api/stats');
-    const data = await res.json();
-    if (!data.success) return;
-    document.getElementById('todayPresent').textContent = data.data.todayPresent;
-    document.getElementById('todayAbsent').textContent  = data.data.todayAbsent;
-    document.getElementById('totalRecords').textContent = data.data.totalLogs;
-  } catch (e) {}
-}
 
 async function loadRecords() {
   const dateInput   = document.getElementById('filterDate').value;
-  const searchInput = document.getElementById('filterSearch').value.trim();
+  const searchInput = document.getElementById('filterSearch').value.trim().toLowerCase();
 
-  // Convert YYYY-MM-DD to MM/DD/YYYY for the API
-  let dateParam = '';
-  if (dateInput) {
-    const [y, m, d] = dateInput.split('-');
-    dateParam = `${parseInt(m)}/${parseInt(d)}/${y}`;
-  }
-
-  let url = '/api/attendance?';
-  if (dateParam)   url += `date=${encodeURIComponent(dateParam)}&`;
-  if (searchInput) url += `search=${encodeURIComponent(searchInput)}&`;
+  if (!dateInput) return;
 
   try {
-    const res  = await fetch(url);
+    const res  = await fetch(`${LOGS_URL}?dateFrom=${dateInput}&dateTo=${dateInput}`);
     const data = await res.json();
-    allRecords = data.success ? data.data : [];
-    renderPresent(allRecords);
+    let records = data.data || [];
 
-    // Also load absent list
-    if (dateParam) {
-      const absRes  = await fetch('/api/attendance/absent');
-      const absData = await absRes.json();
-      absentList = absData.success ? absData.data : [];
-      renderAbsent(absentList);
+    // Filter by search
+    if (searchInput) {
+      records = records.filter(r =>
+        (r.name || '').toLowerCase().includes(searchInput) ||
+        String(r.nis || '').includes(searchInput) ||
+        (r.studentId || '').toLowerCase().includes(searchInput)
+      );
     }
+
+    allRecords = records;
+
+    // Update stats
+    const stats = data.stats || {};
+    document.getElementById('todayPresent').textContent = records.length;
+    document.getElementById('todayAbsent').textContent  = stats.totalAbsent || 0;
+    document.getElementById('totalRecords').textContent = records.length;
+
+    renderPresent(allRecords);
   } catch (e) {
     showToast('error', 'Error', 'Could not load records');
   }
@@ -208,45 +198,41 @@ function renderPresent(records) {
   const tbody = document.getElementById('attendanceBody');
   if (!records.length) {
     tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="padding:40px">
-      <span class="icon">📋</span><p>No records found for this filter.</p></td></tr>`;
+      <span class="icon">📋</span><p>No attendance records yet for this date.</p></td></tr>`;
     return;
   }
 
-  tbody.innerHTML = records.map((r, i) => `
+  tbody.innerHTML = records.map((r, i) => {
+    const statusColor = r.status === 'LATE' ? 'var(--yellow, orange)' : 'var(--green)';
+    return `
     <tr>
       <td style="color:var(--text-muted)">${i + 1}</td>
-      <td><strong>${r.personName}</strong></td>
-      <td><code style="font-size:0.82rem;color:var(--accent)">${r.personId}</code></td>
-      <td>${r.role || '—'}</td>
-      <td>${r.department || '—'}</td>
-      <td style="font-family:monospace;color:var(--green)">${r.time}</td>
-      <td style="color:var(--text-muted)">${r.date}</td>
-      <td>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="background:var(--surface2);border-radius:3px;height:6px;width:60px;overflow:hidden">
-            <div style="height:100%;width:${r.confidence||0}%;background:var(--green)"></div>
-          </div>
-          <span style="font-size:0.78rem">${r.confidence ? r.confidence + '%' : '—'}</span>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+      <td><strong>${r.name || '—'}</strong></td>
+      <td><code style="font-size:0.82rem;color:var(--accent)">${r.nis || '—'}</code></td>
+      <td>${r.grade || '—'}</td>
+      <td style="font-family:monospace;color:var(--green)">${r.checkInTime || '—'}</td>
+      <td style="color:var(--text-muted)">${r.attendanceDate || '—'}</td>
+      <td><span style="color:${statusColor};font-weight:600;font-size:0.82rem">${r.status || '—'}</span></td>
+      <td>${r.evidenceCheckIn
+        ? `<a href="${STORAGE_URL}${r.evidenceCheckIn}" target="_blank" style="color:var(--accent);font-size:0.82rem">View</a>`
+        : '—'}</td>
+    </tr>`;
+  }).join('');
 }
 
 function renderAbsent(absent) {
   const tbody = document.getElementById('absentBody');
   if (!absent.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="empty-state" style="padding:40px">
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-state" style="padding:40px">
       <span class="icon">✅</span><p>Everyone is present today!</p></td></tr>`;
     return;
   }
   tbody.innerHTML = absent.map((f, i) => `
     <tr>
       <td style="color:var(--text-muted)">${i + 1}</td>
-      <td><strong>${f.name}</strong></td>
-      <td><code style="font-size:0.82rem;color:var(--accent)">${f.personId}</code></td>
-      <td>${f.role || '—'}</td>
-      <td>${f.department || '—'}</td>
+      <td><strong>${f.name || '—'}</strong></td>
+      <td><code style="font-size:0.82rem;color:var(--accent)">${f.nis || '—'}</code></td>
+      <td>${f.grade || '—'}</td>
       <td><span class="badge badge-red">Absent</span></td>
     </tr>
   `).join('');
@@ -267,25 +253,16 @@ function clearFilters() {
 }
 
 async function clearToday() {
-  const today = new Date().toLocaleDateString('en-US');
-  if (!confirm(`Clear all attendance records for today (${today})?`)) return;
-  try {
-    await fetch(`/api/attendance?date=${encodeURIComponent(today)}`, { method: 'DELETE' });
-    showToast('success', 'Cleared', "Today's attendance records removed");
-    loadRecords();
-    loadStats();
-  } catch (e) {
-    showToast('error', 'Error', 'Could not clear records');
-  }
+  showToast('warning', 'Not supported', 'Clear is not available with the external API');
 }
 
 function exportCSV() {
   if (!allRecords.length) return showToast('warning', 'No data', 'No records to export');
 
-  const headers = ['#', 'Name', 'Person ID', 'Role', 'Department', 'Time', 'Date', 'Confidence'];
+  const headers = ['#', 'Name', 'NIS', 'Grade', 'Time', 'Date', 'Status'];
   const rows    = allRecords.map((r, i) => [
-    i + 1, r.personName, r.personId, r.role || '', r.department || '',
-    r.time, r.date, (r.confidence || 0) + '%'
+    i + 1, r.name || '', r.nis || '', r.grade || '',
+    r.checkInTime || '', r.attendanceDate || '', r.status || ''
   ]);
 
   const csv = [headers, ...rows]

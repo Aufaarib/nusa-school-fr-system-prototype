@@ -117,21 +117,30 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
+  const BASE_URL    = 'https://api-staging-nusa.nuncorp.id/api/v1/';
+  const STORAGE_URL = 'https://api-staging-nusa.nuncorp.id/be2';
+
   async function loadStats() {
     try {
+      // Get registered count from external API
+      const facesRes  = await fetch('https://api-staging-nusa.nuncorp.id/be2/api/v1/face-recognition/faces');
+      const facesData = await facesRes.json();
+      const totalRegistered = (facesData.data || []).length;
+
+      // Get local stats for attendance
       const res  = await fetch('/api/stats');
       const data = await res.json();
-      if (!data.success) return;
-      document.getElementById('statTotal').textContent   = data.data.totalRegistered;
-      document.getElementById('statPresent').textContent = data.data.todayPresent;
-      document.getElementById('statAbsent').textContent  = data.data.todayAbsent;
-      document.getElementById('statLogs').textContent    = data.data.totalLogs;
+
+      document.getElementById('statTotal').textContent   = totalRegistered;
+      document.getElementById('statPresent').textContent = data.success ? data.data.todayPresent : 0;
+      document.getElementById('statAbsent').textContent  = Math.max(0, totalRegistered - (data.success ? data.data.todayPresent : 0));
+      document.getElementById('statLogs').textContent    = data.success ? data.data.totalLogs : 0;
 
       // Status
       const dot    = document.getElementById('systemDot');
       const status = document.getElementById('systemStatus');
       dot.classList.add('live');
-      status.textContent = `${data.data.totalRegistered} persons registered`;
+      status.textContent = `${totalRegistered} persons registered`;
     } catch (e) {
       document.getElementById('systemStatus').textContent = 'Server offline';
     }
@@ -139,20 +148,18 @@
 
   async function loadFaces() {
     try {
-      const res  = await fetch('/api/faces');
+      const res  = await fetch('https://api-staging-nusa.nuncorp.id/be2/api/v1/face-recognition/faces');
       const data = await res.json();
-      if (!data.success || !data.data.length) return;
+      const list = data.data || [];
+      if (!list.length) return;
 
       const container = document.getElementById('faceList');
-      container.innerHTML = data.data.map(f => `
+      container.innerHTML = list.map(f => `
         <div class="face-card">
-          ${f.thumbnail
-            ? `<img src="${f.thumbnail}" alt="${f.name}">`
+          ${f.imagePath
+            ? `<img src="${STORAGE_URL}${f.imagePath}" alt="${f.name || f.userId}">`
             : `<div class="face-placeholder">👤</div>`}
-          <div class="face-name">${f.name}</div>
-          <div class="face-role">${f.role || 'person'}</div>
-          <div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px">${f.personId}</div>
-          <button class="delete-btn" onclick="deleteFace('${f.personId}','${f.name}')">✕</button>
+          <div class="face-name">${f.name || f.userId}</div>
         </div>
       `).join('');
     } catch (e) { }

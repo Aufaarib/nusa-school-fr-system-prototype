@@ -11,6 +11,8 @@
  */
 
 const MODEL_URL = '/models';
+const BASE_URL    = 'https://api-staging-nusa.nuncorp.id/api/v1/';
+const STORAGE_URL = 'https://api-staging-nusa.nuncorp.id/be2';
 
 let videoEl, overlayEl, overlayCtx;
 let stream         = null;
@@ -71,11 +73,18 @@ async function loadModels() {
 // ─── Load Registered Faces from Server ───────────────────────────────────────
 async function loadRegisteredFaces() {
   try {
-    const res  = await fetch('/api/faces');
+    const res  = await fetch('https://api-staging-nusa.nuncorp.id/be2/api/v1/face-recognition/faces');
     const data = await res.json();
-    if (!data.success) return;
+    const externalFaces = data.data || [];
 
-    registeredFaces = data.data;
+    // Map external API format to internal format
+    registeredFaces = externalFaces.map(f => ({
+      personId: f.userId,
+      name: f.name || f.userId,
+      descriptor: f.descriptor,
+      thumbnail: f.imagePath ? `${STORAGE_URL}${f.imagePath}` : null,
+    }));
+
     document.getElementById('registeredTotal').textContent = registeredFaces.length;
 
     if (!registeredFaces.length) {
@@ -88,7 +97,7 @@ async function loadRegisteredFaces() {
     const labeledDescriptors = registeredFaces.map(f => {
       const desc = new Float32Array(f.descriptor);
       return new faceapi.LabeledFaceDescriptors(
-        JSON.stringify({ id: f.personId, name: f.name, role: f.role, dept: f.department }),
+        JSON.stringify({ id: f.personId, name: f.name }),
         [desc]
       );
     });
@@ -113,7 +122,7 @@ async function startRecognition() {
   const labeledDescriptors = registeredFaces.map(f => {
     const desc = new Float32Array(f.descriptor);
     return new faceapi.LabeledFaceDescriptors(
-      JSON.stringify({ id: f.personId, name: f.name, role: f.role, dept: f.department }),
+      JSON.stringify({ id: f.personId, name: f.name }),
       [desc]
     );
   });
@@ -293,17 +302,24 @@ async function handleRecognized(person, confidence, box) {
     time: now.toLocaleTimeString()
   });
 
-  // Log attendance to server
+  // Capture evidence snapshot from video
+  let evidence = null;
   try {
-    await fetch('/api/attendance/log', {
+    const canvas = document.createElement('canvas');
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    canvas.getContext('2d').drawImage(videoEl, 0, 0);
+    evidence = canvas.toDataURL('image/jpeg', 0.7);
+  } catch (_) { }
+
+  // Log attendance to external API
+  try {
+    await fetch('https://api-staging-nusa.nuncorp.id/be2/api/v1/face-recognition/attend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        personId,
-        personName: person.name,
-        role: person.role,
-        department: person.dept,
-        confidence
+        studentId: personId,
+        evidence
       })
     });
     await refreshPresentList();
