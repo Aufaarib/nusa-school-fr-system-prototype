@@ -323,18 +323,21 @@ async function refreshRegisteredList() {
             <div style="font-size:0.85rem;font-weight:600">${f.name || f.userId}</div>
           </div>
         </div>
+        <button class="btn btn-danger btn-sm" onclick="deletePerson('${f.userId}','${(f.name || f.userId).replace(/'/g, "\\'")}')">✕</button>
       </div>
     `).join('');
   } catch (e) { }
 }
 
-async function deletePerson(personId, name) {
+async function deletePerson(userId, name) {
   if (!confirm(`Remove ${name}?`)) return;
-  const res  = await fetch(`/api/faces/${encodeURIComponent(personId)}`, { method: 'DELETE' });
-  const data = await res.json();
-  if (data.success) {
+  try {
+    const res = await fetch(`https://api-staging-nusa.nuncorp.id/be2/api/v1/face-recognition/faces/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+    const data = await res.json();
     showToast('success', 'Removed', `${name} removed`);
     refreshRegisteredList();
+  } catch (e) {
+    showToast('error', 'Error', e.message);
   }
 }
 

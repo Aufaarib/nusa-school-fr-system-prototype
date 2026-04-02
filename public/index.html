@@ -191,16 +191,13 @@
     } catch (e) { }
   }
 
-  async function deleteFace(personId, name) {
+  async function deleteFace(userId, name) {
     if (!confirm(`Remove ${name} from the system?`)) return;
     try {
-      const res = await fetch(`/api/faces/${encodeURIComponent(personId)}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        showToast('success', 'Removed', `${name} has been removed`);
-        loadStats();
-        loadFaces();
-      }
+      await fetch(`https://api-staging-nusa.nuncorp.id/be2/api/v1/face-recognition/faces/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+      showToast('success', 'Removed', `${name} has been removed`);
+      loadStats();
+      loadFaces();
     } catch (e) {
       showToast('error', 'Error', 'Could not remove person');
     }
